@@ -597,6 +597,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 5485109346185890090, guid: 5a4a178d2faecd0469d1be0c367dd0b9, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: e06df06c988e1ed439277084882c588c, type: 2}
     - target: {fileID: 6156303139612931602, guid: 5a4a178d2faecd0469d1be0c367dd0b9, type: 3}
       propertyPath: m_Enabled
       value: 1
@@ -1236,6 +1240,8 @@ MonoBehaviour:
   rearRightWheel: {fileID: 2021137662}
   maxSteerAngle: 30
   steerSpeed: 5
+  wheelRadius: 0.35
+  spinAxis: {x: 0, y: 0, z: 1}
 --- !u!1 &1543105250 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 730991694010494743, guid: 185aabbee675e1e47bec2573149865ab, type: 3}

@@ -1707,6 +1707,8 @@ MonoBehaviour:
   rearRightWheel: {fileID: 468695409}
   maxSteerAngle: 30
   steerSpeed: 5
+  wheelRadius: 0.35
+  spinAxis: {x: 0, y: 0, z: 1}
 --- !u!54 &1935537099 stripped
 Rigidbody:
   m_CorrespondingSourceObject: {fileID: 2547605962829365429, guid: 5a4a178d2faecd0469d1be0c367dd0b9, type: 3}

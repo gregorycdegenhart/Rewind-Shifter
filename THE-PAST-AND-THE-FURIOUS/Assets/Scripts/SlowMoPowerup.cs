@@ -10,7 +10,6 @@ public class SlowMoPowerup : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // detect any car (player OR AI)
         if (!other.CompareTag("Player") && !other.CompareTag("Opponent"))
             return;
 
@@ -21,56 +20,54 @@ public class SlowMoPowerup : MonoBehaviour
 
         StartCoroutine(ApplySlowMo(picker));
 
-        // hide or disable pickup
         gameObject.SetActive(false);
     }
 
     IEnumerator ApplySlowMo(GameObject picker)
     {
-        // find all racers
         GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
         GameObject[] opponents = GameObject.FindGameObjectsWithTag("Opponent");
 
-        // combine both into one list
+        // Slow down all other players
         foreach (GameObject obj in players)
         {
             if (obj == picker) continue;
 
-            // PLAYER CONTROLLER (if affected)
             CarController car = obj.GetComponent<CarController>();
             if (car != null)
                 car.SetSpeedMultiplier(slowMultiplier);
         }
 
+        // Slow down AI opponents
         foreach (GameObject obj in opponents)
         {
             if (obj == picker) continue;
 
-            // AI CONTROLLER
-            // AICarController ai = obj.GetComponent<AICarController>();
-            // if (ai != null)
-            //     ai.SetSpeedMultiplier(slowMultiplier);
+            // TODO: Add AICarController.SetSpeedMultiplier() when AI is implemented
+            CarController car = obj.GetComponent<CarController>();
+            if (car != null)
+                car.SetSpeedMultiplier(slowMultiplier);
         }
 
         yield return new WaitForSeconds(duration);
 
-        // reset everyone back to normal
+        // Reset everyone back to normal
         foreach (GameObject obj in players)
         {
             if (obj == picker) continue;
 
-            // CarController car = obj.GetComponent<CarController>();
-            // if (car != null)
-            //     car.SetSpeedMultiplier(1f);
+            CarController car = obj.GetComponent<CarController>();
+            if (car != null)
+                car.SetSpeedMultiplier(1f);
         }
 
         foreach (GameObject obj in opponents)
         {
             if (obj == picker) continue;
 
-            // AICarController ai = obj.GetComponent<AICarController>();
-            // if (ai != null)
-            //     ai.SetSpeedMultiplier(1f);
+            CarController car = obj.GetComponent<CarController>();
+            if (car != null)
+                car.SetSpeedMultiplier(1f);
         }
     }
 }

@@ -52,8 +52,7 @@ public class CarController : MonoBehaviour
 
         rb.centerOfMass = centerOfMassOffset;
 
-        rb.useGravity = true; // make sure this is on
-        rb.AddForce(Physics.gravity * 4f * rb.mass);
+        rb.useGravity = true;
     }
 
     void Update()
@@ -79,7 +78,7 @@ public class CarController : MonoBehaviour
     {
         // At the start of FixedUpdate, apply extra gravity
         rb.AddForce(Physics.gravity * 2f * rb.mass, ForceMode.Force);
-        
+
         Vector3 forward = transform.forward;
         forward.y = 0f; // flatten so we only move along ground
         forward.Normalize();
@@ -93,14 +92,20 @@ public class CarController : MonoBehaviour
 
         Vector3 desiredVel = forward * targetSpeed;
 
-        // calculate force needed to reach desired velocity
-        Vector3 force = (desiredVel - flatVel) * rb.mass / Time.fixedDeltaTime;
+        // Skip braking force when airborne with no input (preserves momentum in air)
+        bool airborneCoasting = !IsGrounded(out RaycastHit hit) && Mathf.Abs(moveInput.y) < 0.01f;
 
-        // clamp force for stability
-        force = Vector3.ClampMagnitude(force, acceleration * rb.mass);
+        if (!airborneCoasting)
+        {
+            // calculate force needed to reach desired velocity
+            Vector3 force = (desiredVel - flatVel) * rb.mass / Time.fixedDeltaTime;
 
-        // apply force, leave gravity alone
-        rb.AddForce(force, ForceMode.Force);
+            // clamp force for stability
+            force = Vector3.ClampMagnitude(force, acceleration * rb.mass);
+
+            // apply force, leave gravity alone
+            rb.AddForce(force, ForceMode.Force);
+        }
 
         // turning
         if (Mathf.Abs(moveInput.x) > 0.1f)
@@ -114,7 +119,7 @@ public class CarController : MonoBehaviour
         localVel.x *= sidewaysDrag;
         rb.linearVelocity = transform.TransformDirection(localVel);
 
-        if (IsGrounded(out RaycastHit hit))
+        if (IsGrounded(out _))
         {
             rb.AddForce(Vector3.down * groundStickForce, ForceMode.Acceleration);
 

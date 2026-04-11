@@ -59,6 +59,7 @@ public class RaceManager : MonoBehaviour
     }
 
     public static RaceManager Instance { get; private set; }
+    public bool IsRaceFinished => raceFinished;
 
     // called by LapCheckpoint triggers
     public void HitCheckpoint(int checkpointIndex, bool completesLap = false)

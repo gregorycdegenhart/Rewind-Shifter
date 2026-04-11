@@ -7,9 +7,12 @@ public class LapCheckpoint : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
+        if (other.CompareTag("Player") && RaceManager.Instance != null)
         {
             RaceManager.Instance.HitCheckpoint(checkpointIndex, completesLap);
+
+            CarAudio carAudio = other.GetComponent<CarAudio>();
+            if (carAudio != null) carAudio.PlayCheckpointSound();
         }
     }
 }

@@ -12,8 +12,13 @@ public class WheelVisuals : MonoBehaviour
     public float maxSteerAngle = 30f;
     public float steerSpeed = 5f;
 
+    [Header("Spin")]
+    public float wheelRadius = 0.35f;
+    public Vector3 spinAxis = Vector3.right;
+
     private CarController carController;
     private float currentSteerAngle = 0f;
+    private float spinAngle = 0f;
 
     void Awake()
     {
@@ -23,6 +28,7 @@ public class WheelVisuals : MonoBehaviour
     void Update()
     {
         HandleSteering();
+        HandleSpin();
     }
 
     void HandleSteering()
@@ -32,10 +38,27 @@ public class WheelVisuals : MonoBehaviour
 
         currentSteerAngle = Mathf.Lerp(currentSteerAngle, targetAngle, Time.deltaTime * steerSpeed);
 
+        Quaternion spin = Quaternion.AngleAxis(spinAngle, spinAxis);
+
         if (frontLeftWheel != null)
-            frontLeftWheel.localRotation = Quaternion.Euler(0f, currentSteerAngle, 0f);
+            frontLeftWheel.localRotation = Quaternion.Euler(0f, currentSteerAngle, 0f) * spin;
 
         if (frontRightWheel != null)
-            frontRightWheel.localRotation = Quaternion.Euler(0f, currentSteerAngle, 0f);
+            frontRightWheel.localRotation = Quaternion.Euler(0f, currentSteerAngle, 0f) * spin;
+    }
+
+    void HandleSpin()
+    {
+        float forwardSpeed = Vector3.Dot(carController.rb.linearVelocity, carController.transform.forward);
+        float rpm = forwardSpeed / (2f * Mathf.PI * wheelRadius) * 360f;
+        spinAngle += rpm * Time.deltaTime;
+
+        Quaternion spin = Quaternion.AngleAxis(spinAngle, spinAxis);
+
+        if (rearLeftWheel != null)
+            rearLeftWheel.localRotation = spin;
+
+        if (rearRightWheel != null)
+            rearRightWheel.localRotation = spin;
     }
 }
