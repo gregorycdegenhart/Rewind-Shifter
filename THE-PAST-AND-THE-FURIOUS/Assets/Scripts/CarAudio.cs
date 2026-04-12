@@ -74,14 +74,15 @@ public class CarAudio : MonoBehaviour
         for (int i = 0; i < length; i++)
         {
             float time = (float)i / sampleRate;
-            // sawtooth fundamental at 80 Hz + harmonics
+            // Smooth sine-based engine tone - deep rumble, not harsh
             float sample = 0f;
-            sample += Sawtooth(time, 80f) * 0.5f;
-            sample += Sawtooth(time, 160f) * 0.25f;
-            sample += Sawtooth(time, 240f) * 0.15f;
-            // add some noise for roughness
-            sample += (Random.value * 2f - 1f) * 0.05f;
-            samples[i] = sample * 0.4f;
+            sample += Mathf.Sin(2f * Mathf.PI * 75f * time) * 0.4f;        // deep fundamental
+            sample += Mathf.Sin(2f * Mathf.PI * 150f * time) * 0.25f;       // first harmonic
+            sample += Mathf.Sin(2f * Mathf.PI * 225f * time) * 0.1f;        // second harmonic
+            sample += Mathf.Sin(2f * Mathf.PI * 300f * time) * 0.05f;       // subtle overtone
+            // light noise for character, not harshness
+            sample += (Random.value * 2f - 1f) * 0.02f;
+            samples[i] = sample * 0.35f;
         }
 
         AudioClip clip = AudioClip.Create("Engine", length, 1, sampleRate, false);
