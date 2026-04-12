@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
@@ -118,10 +119,13 @@ public class VerticalSliceSetup : EditorWindow
 
         GameObject[] roots = scene.GetRootGameObjects();
 
-        // Remove generated canvas by name
+        // Remove generated canvas by name (also catch hand-made "Canvas" roots)
         foreach (var root in roots)
         {
-            if (root.name == canvasName)
+            if (root == null) continue;
+            if (root.name == canvasName || root.name == "MinimapCamera")
+                Object.DestroyImmediate(root);
+            else if (root.name == "Canvas" && root.GetComponent<Canvas>() != null)
                 Object.DestroyImmediate(root);
         }
 
@@ -143,7 +147,9 @@ public class VerticalSliceSetup : EditorWindow
                     "CarLabel", "CarNameText", "PrevCarButton", "NextCarButton",
                     "MapNameText", "RaceButton", "BackButton",
                     "PauseTitle", "ResumeButton", "HTPPauseButton", "RestartButton",
-                    "EventSystem"
+                    "EventSystem",
+                    "CountdownText", "TimerText", "LapText",
+                    "TurboBarBackground", "MinimapImage", "FadeOverlay"
                 };
 
                 foreach (string childName in generatedNames)
@@ -179,6 +185,23 @@ public class VerticalSliceSetup : EditorWindow
                 Object.DestroyImmediate(comp);
             foreach (var comp in root.GetComponentsInChildren<MusicManager>(true))
                 Object.DestroyImmediate(comp);
+            foreach (var comp in root.GetComponentsInChildren<CountdownUI>(true))
+                Object.DestroyImmediate(comp);
+            foreach (var comp in root.GetComponentsInChildren<RaceTimer>(true))
+                Object.DestroyImmediate(comp);
+            foreach (var comp in root.GetComponentsInChildren<TurboCooldownUI>(true))
+                Object.DestroyImmediate(comp);
+
+            // Clean nested MusicPlaylistWidget inside PausePanel
+            foreach (var canvas in root.GetComponentsInChildren<Canvas>(true))
+            {
+                Transform pp = canvas.transform.Find("PausePanel");
+                if (pp != null)
+                {
+                    Transform nested = pp.Find("MusicPlaylistWidget");
+                    if (nested != null) Object.DestroyImmediate(nested.gameObject);
+                }
+            }
         }
 
         EditorSceneManager.SaveScene(scene);
@@ -246,7 +269,7 @@ public class VerticalSliceSetup : EditorWindow
         mainMenuUI.howToPlayScreen = htpScreen;
 
         // Music playlist widget
-        CreateMusicPlaylistWidget(canvasGO.transform);
+        CreateMusicPlaylistWidget(canvasGO.transform, new Vector2(20, 20), new Vector2(320, 130));
 
         MarkAllDirty(canvasGO);
         EditorSceneManager.SaveScene(scene);
@@ -316,7 +339,7 @@ public class VerticalSliceSetup : EditorWindow
         WirePersistentClick(backBtn, gm, "BackToMenu");
 
         // Music playlist widget
-        CreateMusicPlaylistWidget(canvasGO.transform);
+        CreateMusicPlaylistWidget(canvasGO.transform, new Vector2(20, 20), new Vector2(320, 130));
 
         MarkAllDirty(canvasGO);
         EditorSceneManager.SaveScene(scene);
@@ -386,11 +409,12 @@ public class VerticalSliceSetup : EditorWindow
         pauseMenu.pausePanel = pausePanel;
         pauseMenu.howToPlayPanel = htpPanel;
 
-        WirePersistentClick(resumeBtn, pauseMenu, "OnResumeButton");
-        WirePersistentClick(htpPauseBtn, pauseMenu, "OnHowToPlayButton");
-        WirePersistentClick(closeHTPBtn, pauseMenu, "CloseHowToPlay");
-        WirePersistentClick(restartBtn, pauseMenu, "OnRestartButton");
-        WirePersistentClick(quitBtn, pauseMenu, "OnQuitToMenuButton");
+        // NOTE: Do NOT add persistent listeners here — PauseMenu.Start() wires
+        // buttons at runtime via WireButton(). Adding persistent listeners too would
+        // cause double-firing (resume immediately re-pauses, etc).
+
+        // --- MUSIC WIDGET IN PAUSE PANEL ---
+        CreateMusicPlaylistWidget(pausePanel.transform, new Vector2(20, 20), new Vector2(300, 130), true);
 
         // --- WIRE GAME OVER ---
         var gameOverScreen = EnsureComponent<GameOverScreen>(canvasGO);
@@ -409,8 +433,145 @@ public class VerticalSliceSetup : EditorWindow
             EditorUtility.SetDirty(rm);
         }
 
-        // --- TIRE SMOKE ---
+        // --- COUNTDOWN ---
+        var countdownTextGO = CreateText(canvasGO.transform, "CountdownText", "",
+            Vector2.zero, 120, TextAlignmentOptions.Center, FontStyles.Bold);
+        var countdownRect = countdownTextGO.GetComponent<RectTransform>();
+        countdownRect.anchorMin = new Vector2(0.5f, 0.5f);
+        countdownRect.anchorMax = new Vector2(0.5f, 0.5f);
+        countdownRect.sizeDelta = new Vector2(400, 200);
+
+        var countdownUI = EnsureComponent<CountdownUI>(canvasGO);
+        countdownUI.countdownText = countdownTextGO.GetComponent<TextMeshProUGUI>();
+
+        // --- RACE TIMER ---
+        var timerTextGO = CreateText(canvasGO.transform, "TimerText", "00:00.00",
+            new Vector2(20, -20), 36, TextAlignmentOptions.TopLeft, FontStyles.Normal);
+        var timerRect = timerTextGO.GetComponent<RectTransform>();
+        timerRect.anchorMin = new Vector2(0, 1);
+        timerRect.anchorMax = new Vector2(0, 1);
+        timerRect.pivot = new Vector2(0, 1);
+        timerRect.sizeDelta = new Vector2(300, 50);
+
+        var raceTimer = EnsureComponent<RaceTimer>(canvasGO);
+        raceTimer.timerText = timerTextGO.GetComponent<TextMeshProUGUI>();
+
+        // --- LAP TEXT ---
+        var lapTextGO = CreateText(canvasGO.transform, "LapText", "Lap 1 / 3",
+            new Vector2(20, -75), 28, TextAlignmentOptions.TopLeft, FontStyles.Normal);
+        var lapRect = lapTextGO.GetComponent<RectTransform>();
+        lapRect.anchorMin = new Vector2(0, 1);
+        lapRect.anchorMax = new Vector2(0, 1);
+        lapRect.pivot = new Vector2(0, 1);
+        lapRect.sizeDelta = new Vector2(300, 40);
+
+        // --- TURBO BAR ---
+        Transform existingTurboBG = canvasGO.transform.Find("TurboBarBackground");
+        if (existingTurboBG != null) Object.DestroyImmediate(existingTurboBG.gameObject);
+        GameObject turboBarBG = new GameObject("TurboBarBackground");
+        turboBarBG.transform.SetParent(canvasGO.transform, false);
+        var turboBGRect = turboBarBG.AddComponent<RectTransform>();
+        turboBGRect.anchorMin = new Vector2(0.5f, 0);
+        turboBGRect.anchorMax = new Vector2(0.5f, 0);
+        turboBGRect.pivot = new Vector2(0.5f, 0);
+        turboBGRect.anchoredPosition = new Vector2(0, 30);
+        turboBGRect.sizeDelta = new Vector2(200, 20);
+        var turboBGImg = turboBarBG.AddComponent<Image>();
+        turboBGImg.color = new Color(0.15f, 0.15f, 0.15f, 0.8f);
+
+        GameObject turboBarFill = new GameObject("TurboBarFill");
+        turboBarFill.transform.SetParent(turboBarBG.transform, false);
+        var turboFillRect = turboBarFill.AddComponent<RectTransform>();
+        turboFillRect.anchorMin = Vector2.zero;
+        turboFillRect.anchorMax = Vector2.one;
+        turboFillRect.offsetMin = Vector2.zero;
+        turboFillRect.offsetMax = Vector2.zero;
+        var turboFillImg = turboBarFill.AddComponent<Image>();
+        turboFillImg.color = Color.green;
+        turboFillImg.type = Image.Type.Filled;
+        turboFillImg.fillMethod = Image.FillMethod.Horizontal;
+
+        var turboCooldownUI = EnsureComponent<TurboCooldownUI>(canvasGO);
+        turboCooldownUI.fillBar = turboFillImg;
+
+        // --- MINIMAP ---
+        // Create RenderTexture asset if it doesn't exist
+        string rtPath = "Assets/Resources/MinimapRT.renderTexture";
+        RenderTexture minimapRT = AssetDatabase.LoadAssetAtPath<RenderTexture>(rtPath);
+        if (minimapRT == null)
+        {
+            minimapRT = new RenderTexture(256, 256, 16);
+            minimapRT.name = "MinimapRT";
+            if (!AssetDatabase.IsValidFolder("Assets/Resources"))
+                AssetDatabase.CreateFolder("Assets", "Resources");
+            AssetDatabase.CreateAsset(minimapRT, rtPath);
+            AssetDatabase.SaveAssets();
+        }
+
+        // Minimap RawImage on the canvas
+        if (canvasGO.transform.Find("MinimapImage") == null)
+        {
+            GameObject minimapImgGO = new GameObject("MinimapImage");
+            minimapImgGO.transform.SetParent(canvasGO.transform, false);
+            var mmRect = minimapImgGO.AddComponent<RectTransform>();
+            mmRect.anchorMin = new Vector2(1, 0);
+            mmRect.anchorMax = new Vector2(1, 0);
+            mmRect.pivot = new Vector2(1, 0);
+            mmRect.anchoredPosition = new Vector2(-20, 20);
+            mmRect.sizeDelta = new Vector2(180, 180);
+            var rawImg = minimapImgGO.AddComponent<UnityEngine.UI.RawImage>();
+            rawImg.texture = minimapRT;
+            rawImg.raycastTarget = false;
+        }
+
+        // MinimapCamera GameObject in the scene
+        MinimapCamera existingMiniCam = Object.FindFirstObjectByType<MinimapCamera>();
+        if (existingMiniCam == null)
+        {
+            GameObject miniCamGO = new GameObject("MinimapCamera");
+            var miniCam = miniCamGO.AddComponent<Camera>();
+            miniCam.orthographic = true;
+            miniCam.clearFlags = CameraClearFlags.SolidColor;
+            miniCam.backgroundColor = Color.black;
+            miniCam.targetTexture = minimapRT;
+            // Remove AudioListener if one was added
+            AudioListener listener = miniCamGO.GetComponent<AudioListener>();
+            if (listener != null) Object.DestroyImmediate(listener);
+
+            var miniMapScript = miniCamGO.AddComponent<MinimapCamera>();
+            existingMiniCam = miniMapScript;
+            EditorUtility.SetDirty(miniCamGO);
+        }
+        else
+        {
+            var cam = existingMiniCam.GetComponent<Camera>();
+            if (cam != null) cam.targetTexture = minimapRT;
+        }
+
+        // --- CAR SETUP ---
         CarController car = Object.FindFirstObjectByType<CarController>();
+
+        // Wire minimap + countdown + RaceManager to the car
+        if (car != null)
+        {
+            existingMiniCam.target = car.transform;
+            EditorUtility.SetDirty(existingMiniCam);
+
+            PlayerInput pi = car.GetComponent<PlayerInput>();
+            if (pi != null)
+                countdownUI.playerInput = pi;
+
+            turboCooldownUI.carController = car;
+        }
+
+        // --- CAR AUDIO ---
+        if (car != null && car.GetComponent<CarAudio>() == null)
+        {
+            car.gameObject.AddComponent<CarAudio>();
+            EditorUtility.SetDirty(car.gameObject);
+        }
+
+        // --- TIRE SMOKE ---
         if (car != null && car.GetComponent<TireSmoke>() == null)
         {
             var smoke = car.gameObject.AddComponent<TireSmoke>();
@@ -423,6 +584,40 @@ public class VerticalSliceSetup : EditorWindow
         {
             car.gameObject.AddComponent<WheelColliders>();
             EditorUtility.SetDirty(car.gameObject);
+        }
+
+        // --- WIRE RACE MANAGER (extended) ---
+        if (rm != null && car != null)
+        {
+            PlayerInput pi = car.GetComponent<PlayerInput>();
+            if (pi != null) rm.playerInput = pi;
+            rm.carController = car;
+            rm.carRigidbody = car.rb;
+            rm.carTransform = car.transform;
+            rm.lapText = lapTextGO.GetComponent<TextMeshProUGUI>();
+            EditorUtility.SetDirty(rm);
+        }
+
+        // --- FADE GROUP ---
+        if (rm != null && rm.fadeGroup == null)
+        {
+            GameObject fadeGO = new GameObject("FadeOverlay");
+            fadeGO.transform.SetParent(canvasGO.transform, false);
+            var fadeRect = fadeGO.AddComponent<RectTransform>();
+            fadeRect.anchorMin = Vector2.zero;
+            fadeRect.anchorMax = Vector2.one;
+            fadeRect.offsetMin = Vector2.zero;
+            fadeRect.offsetMax = Vector2.zero;
+            var fadeImg = fadeGO.AddComponent<Image>();
+            fadeImg.color = Color.black;
+            fadeImg.raycastTarget = false;
+            var fadeCanvasGroup = fadeGO.AddComponent<CanvasGroup>();
+            fadeCanvasGroup.alpha = 0f;
+            fadeCanvasGroup.blocksRaycasts = false;
+            rm.fadeGroup = fadeCanvasGroup;
+            // Move to last sibling so it renders on top
+            fadeGO.transform.SetAsLastSibling();
+            EditorUtility.SetDirty(rm);
         }
 
         MarkAllDirty(canvasGO);
@@ -759,46 +954,107 @@ public class VerticalSliceSetup : EditorWindow
             EditorUtility.SetDirty(child.gameObject);
     }
 
-    static void CreateMusicPlaylistWidget(Transform canvasTransform)
+    static void CreateMusicPlaylistWidget(Transform parent, Vector2 position, Vector2 size, bool alwaysVisible = false)
     {
         string name = "MusicPlaylistWidget";
-        if (canvasTransform.Find(name) != null) return;
+        if (parent.Find(name) != null) return;
 
         GameObject widget = new GameObject(name);
-        widget.transform.SetParent(canvasTransform, false);
+        widget.transform.SetParent(parent, false);
 
         RectTransform widgetRect = widget.AddComponent<RectTransform>();
         widgetRect.anchorMin = new Vector2(0, 0);
         widgetRect.anchorMax = new Vector2(0, 0);
         widgetRect.pivot = new Vector2(0, 0);
-        widgetRect.anchoredPosition = new Vector2(20, 20);
-        widgetRect.sizeDelta = new Vector2(320, 100);
+        widgetRect.anchoredPosition = position;
+        widgetRect.sizeDelta = size;
 
         Image bg = widget.AddComponent<Image>();
         bg.color = new Color(0, 0, 0, 0.75f);
 
         var songText = CreateText(widget.transform, "SongNameText", "No Track",
-            new Vector2(0, 18), 20, TextAlignmentOptions.Center, FontStyles.Normal);
+            new Vector2(0, 28), 20, TextAlignmentOptions.Center, FontStyles.Normal);
         songText.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 30);
 
         var trackText = CreateText(widget.transform, "TrackNumberText", "0 / 0",
-            new Vector2(0, -5), 16, TextAlignmentOptions.Center, FontStyles.Normal);
+            new Vector2(0, 5), 16, TextAlignmentOptions.Center, FontStyles.Normal);
         trackText.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 24);
 
         var prevBtn = CreateButton(widget.transform, "PrevTrackBtn", "<<",
-            new Vector2(-110, -35), new Vector2(55, 35));
+            new Vector2(-110, -25), new Vector2(55, 35));
         var playPauseBtn = CreateButton(widget.transform, "PlayPauseBtn", "||",
-            new Vector2(0, -35), new Vector2(55, 35));
+            new Vector2(0, -25), new Vector2(55, 35));
         var nextBtn = CreateButton(widget.transform, "NextTrackBtn", ">>",
-            new Vector2(110, -35), new Vector2(55, 35));
+            new Vector2(110, -25), new Vector2(55, 35));
 
+        // --- Volume Slider ---
+        GameObject sliderGO = new GameObject("VolumeSlider");
+        sliderGO.transform.SetParent(widget.transform, false);
+        RectTransform sliderRect = sliderGO.AddComponent<RectTransform>();
+        sliderRect.anchoredPosition = new Vector2(0, -55);
+        sliderRect.sizeDelta = new Vector2(260, 16);
+
+        // Background
+        GameObject sliderBG = new GameObject("Background");
+        sliderBG.transform.SetParent(sliderGO.transform, false);
+        var bgImg = sliderBG.AddComponent<Image>();
+        bgImg.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        var bgRect = sliderBG.GetComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero; bgRect.anchorMax = Vector2.one;
+        bgRect.offsetMin = Vector2.zero; bgRect.offsetMax = Vector2.zero;
+
+        // Fill Area
+        GameObject fillArea = new GameObject("Fill Area");
+        fillArea.transform.SetParent(sliderGO.transform, false);
+        var fillAreaRect = fillArea.AddComponent<RectTransform>();
+        fillAreaRect.anchorMin = new Vector2(0, 0.25f);
+        fillAreaRect.anchorMax = new Vector2(1, 0.75f);
+        fillAreaRect.offsetMin = new Vector2(5, 0);
+        fillAreaRect.offsetMax = new Vector2(-5, 0);
+
+        GameObject fill = new GameObject("Fill");
+        fill.transform.SetParent(fillArea.transform, false);
+        var fillImg = fill.AddComponent<Image>();
+        fillImg.color = new Color(0.8f, 0.2f, 0.2f, 1f);
+        var fillRect = fill.GetComponent<RectTransform>();
+        fillRect.anchorMin = Vector2.zero; fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = Vector2.zero; fillRect.offsetMax = Vector2.zero;
+
+        // Handle Slide Area
+        GameObject handleArea = new GameObject("Handle Slide Area");
+        handleArea.transform.SetParent(sliderGO.transform, false);
+        var handleAreaRect = handleArea.AddComponent<RectTransform>();
+        handleAreaRect.anchorMin = Vector2.zero; handleAreaRect.anchorMax = Vector2.one;
+        handleAreaRect.offsetMin = new Vector2(10, 0);
+        handleAreaRect.offsetMax = new Vector2(-10, 0);
+
+        GameObject handle = new GameObject("Handle");
+        handle.transform.SetParent(handleArea.transform, false);
+        var handleImg = handle.AddComponent<Image>();
+        handleImg.color = Color.white;
+        var handleRect = handle.GetComponent<RectTransform>();
+        handleRect.sizeDelta = new Vector2(16, 16);
+
+        Slider slider = sliderGO.AddComponent<Slider>();
+        slider.fillRect = fillRect;
+        slider.handleRect = handleRect;
+        slider.targetGraphic = handleImg;
+        slider.wholeNumbers = false;
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.value = 0.5f;
+        slider.direction = Slider.Direction.LeftToRight;
+
+        // --- Wire MusicPlaylistUI ---
         var playlistUI = widget.AddComponent<MusicPlaylistUI>();
         playlistUI.songNameText = songText.GetComponent<TextMeshProUGUI>();
         playlistUI.trackNumberText = trackText.GetComponent<TextMeshProUGUI>();
+        playlistUI.volumeSlider = slider;
         playlistUI.panel = widget;
+        playlistUI.alwaysVisible = alwaysVisible;
 
-        WirePersistentClick(prevBtn, playlistUI, "OnPreviousButton");
-        WirePersistentClick(playPauseBtn, playlistUI, "OnPlayPauseButton");
-        WirePersistentClick(nextBtn, playlistUI, "OnNextButton");
+        // NOTE: Do NOT add persistent listeners here — MusicPlaylistUI.Start() wires
+        // buttons at runtime via WireButton(). Adding persistent listeners too would
+        // cause double-firing (skip 2 songs, etc).
     }
 }
