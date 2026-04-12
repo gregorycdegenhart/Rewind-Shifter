@@ -9,12 +9,17 @@ public class MusicPlaylistUI : MonoBehaviour
     public TextMeshProUGUI trackNumberText;
     public GameObject panel;
 
+    [Header("Volume")]
+    public Slider volumeSlider;
+
     [Header("Auto-Hide")]
     public float showDuration = 4f;
+    public bool alwaysVisible = false;
 
     private float showTimer = 0f;
     private bool isVisible = false;
     private string lastSongName = "";
+    private TextMeshProUGUI playPauseText;
 
     void Start()
     {
@@ -25,6 +30,11 @@ public class MusicPlaylistUI : MonoBehaviour
             WireButton("PrevTrackBtn", OnPreviousButton);
             WireButton("PlayPauseBtn", OnPlayPauseButton);
             WireButton("NextTrackBtn", OnNextButton);
+
+            // Grab play/pause button text for toggling label
+            var ppBtn = panel.transform.Find("PlayPauseBtn");
+            if (ppBtn != null)
+                playPauseText = ppBtn.GetComponentInChildren<TextMeshProUGUI>();
 
             // Auto-find text if not assigned
             if (songNameText == null)
@@ -37,6 +47,21 @@ public class MusicPlaylistUI : MonoBehaviour
                 var t = panel.transform.Find("TrackNumberText");
                 if (t != null) trackNumberText = t.GetComponent<TextMeshProUGUI>();
             }
+
+            // Auto-find volume slider
+            if (volumeSlider == null)
+            {
+                var t = panel.transform.Find("VolumeSlider");
+                if (t != null) volumeSlider = t.GetComponent<Slider>();
+            }
+        }
+
+        // Wire volume slider
+        if (volumeSlider != null)
+        {
+            if (MusicManager.Instance != null)
+                volumeSlider.value = MusicManager.Instance.volume;
+            volumeSlider.onValueChanged.AddListener(OnVolumeChanged);
         }
 
         ShowWidget();
@@ -54,8 +79,8 @@ public class MusicPlaylistUI : MonoBehaviour
             ShowWidget();
         }
 
-        // Only auto-hide during gameplay, not in menus
-        if (isVisible && RaceManager.Instance != null)
+        // Only auto-hide during gameplay, not in menus or when alwaysVisible
+        if (isVisible && !alwaysVisible && RaceManager.Instance != null)
         {
             showTimer -= Time.unscaledDeltaTime;
             if (showTimer <= 0f)
@@ -100,6 +125,7 @@ public class MusicPlaylistUI : MonoBehaviour
         if (MusicManager.Instance != null)
         {
             MusicManager.Instance.NextTrack();
+            UpdatePlayPauseLabel();
             ShowWidget();
         }
     }
@@ -109,6 +135,7 @@ public class MusicPlaylistUI : MonoBehaviour
         if (MusicManager.Instance != null)
         {
             MusicManager.Instance.PreviousTrack();
+            UpdatePlayPauseLabel();
             ShowWidget();
         }
     }
@@ -118,8 +145,21 @@ public class MusicPlaylistUI : MonoBehaviour
         if (MusicManager.Instance != null)
         {
             MusicManager.Instance.TogglePause();
+            UpdatePlayPauseLabel();
             ShowWidget();
         }
+    }
+
+    void UpdatePlayPauseLabel()
+    {
+        if (playPauseText == null || MusicManager.Instance == null) return;
+        playPauseText.text = MusicManager.Instance.IsPaused() ? ">" : "||";
+    }
+
+    public void OnVolumeChanged(float value)
+    {
+        if (MusicManager.Instance != null)
+            MusicManager.Instance.SetVolume(value);
     }
 
     public void OnToggleWidget()

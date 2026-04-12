@@ -30,6 +30,7 @@ public class MusicManager : MonoBehaviour
 
     private AudioSource musicSource;
     private int currentTrackIndex = 0;
+    private bool isPaused = false;
 
     void Awake()
     {
@@ -44,9 +45,22 @@ public class MusicManager : MonoBehaviour
 
         musicSource = gameObject.AddComponent<AudioSource>();
         musicSource.loop = false;
-        musicSource.volume = volume;
         musicSource.spatialBlend = 0f;
         musicSource.playOnAwake = false;
+        musicSource.ignoreListenerPause = true;
+
+        // Restore saved volume
+        if (PlayerPrefs.HasKey("MusicVolume"))
+            volume = PlayerPrefs.GetFloat("MusicVolume");
+        musicSource.volume = volume;
+
+        // Auto-load playlist from Resources/Music if none assigned
+        if (playlist == null || playlist.Length == 0)
+        {
+            AudioClip[] loaded = Resources.LoadAll<AudioClip>("Music");
+            if (loaded != null && loaded.Length > 0)
+                playlist = loaded;
+        }
     }
 
     void Start()
@@ -57,7 +71,7 @@ public class MusicManager : MonoBehaviour
 
     void Update()
     {
-        if (musicSource != null && !musicSource.isPlaying && playlist != null && playlist.Length > 0)
+        if (musicSource != null && !isPaused && !musicSource.isPlaying && playlist != null && playlist.Length > 0)
             NextTrack();
     }
 
@@ -68,6 +82,7 @@ public class MusicManager : MonoBehaviour
         currentTrackIndex = Mathf.Clamp(index, 0, playlist.Length - 1);
         musicSource.clip = playlist[currentTrackIndex];
         musicSource.Play();
+        isPaused = false;
     }
 
     public void NextTrack()
@@ -95,16 +110,23 @@ public class MusicManager : MonoBehaviour
 
     public void TogglePause()
     {
-        if (musicSource.isPlaying)
-            musicSource.Pause();
-        else
+        if (isPaused)
+        {
             musicSource.UnPause();
+            isPaused = false;
+        }
+        else
+        {
+            musicSource.Pause();
+            isPaused = true;
+        }
     }
 
     public void SetVolume(float vol)
     {
         volume = Mathf.Clamp01(vol);
         musicSource.volume = volume;
+        PlayerPrefs.SetFloat("MusicVolume", volume);
     }
 
     public string GetCurrentSongName()
@@ -121,4 +143,5 @@ public class MusicManager : MonoBehaviour
     public int GetCurrentTrackIndex() => currentTrackIndex;
     public int GetTrackCount() => playlist != null ? playlist.Length : 0;
     public bool IsPlaying() => musicSource != null && musicSource.isPlaying;
+    public bool IsPaused() => isPaused;
 }
