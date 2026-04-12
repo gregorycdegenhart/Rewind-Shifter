@@ -48,6 +48,7 @@ public class RaceManager : MonoBehaviour
     private int nextExpectedCheckpoint = 0; // for laps mode
     private int currentCheckpoint = 0;      // for checkpoints mode
     private bool raceFinished = false;
+    private System.Collections.Generic.HashSet<int> visitedCheckpoints = new System.Collections.Generic.HashSet<int>();
 
     void Awake()
     {
@@ -109,28 +110,26 @@ public class RaceManager : MonoBehaviour
         switch (raceType)
         {
             case RaceType.Laps:
-            // enforce ordered checkpoints
-                if (checkpointIndex != nextExpectedCheckpoint)
-                    return;
-
-                // if this checkpoint is the one that ends the lap
                 if (completesLap)
                 {
-                    currentLap++;
-                    UpdateLapUI();
-
-                    Debug.Log("Lap completed: " + currentLap);
-
-                    nextExpectedCheckpoint = 0;
-
-                    if (currentLap > totalLaps)
+                    // Only complete a lap if all non-finish checkpoints have been visited
+                    // (On the very first crossing, visitedCheckpoints may be incomplete —
+                    //  that's fine, it just won't count as a lap yet)
+                    int requiredCount = GetNonFinishCheckpointCount();
+                    if (visitedCheckpoints.Count >= requiredCount)
                     {
-                        StartCoroutine(FinishRace());
+                        currentLap++;
+                        UpdateLapUI();
+                        Debug.Log("Lap completed: " + currentLap);
+                        visitedCheckpoints.Clear();
+
+                        if (currentLap > totalLaps)
+                            StartCoroutine(FinishRace());
                     }
                 }
                 else
                 {
-                    nextExpectedCheckpoint++;
+                    visitedCheckpoints.Add(checkpointIndex);
                 }
                 break;
 
@@ -189,6 +188,16 @@ public class RaceManager : MonoBehaviour
         {
             SceneManager.LoadScene(nextSceneName);
         }
+    }
+
+    int GetNonFinishCheckpointCount()
+    {
+        int count = 0;
+        foreach (var cp in Object.FindObjectsByType<LapCheckpoint>(FindObjectsSortMode.None))
+        {
+            if (!cp.completesLap) count++;
+        }
+        return count;
     }
 
     void UpdateLapUI() 
