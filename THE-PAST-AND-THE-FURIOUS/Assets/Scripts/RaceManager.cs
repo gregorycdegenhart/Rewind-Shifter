@@ -35,10 +35,15 @@ public class RaceManager : MonoBehaviour
     public float fadeDuration = 1f;
     public string nextSceneName;
     
+    [Header("Game Over")]
+    public GameOverScreen gameOverScreen;
+    public float raceTimeLimit = 0f; // 0 = no limit
+
     [Header("UI")]
     public TextMeshProUGUI lapText;
 
     // internal state
+    private float raceElapsed = 0f;
     private int currentLap = 1;
     private int nextExpectedCheckpoint = 0; // for laps mode
     private int currentCheckpoint = 0;      // for checkpoints mode
@@ -60,6 +65,34 @@ public class RaceManager : MonoBehaviour
 
     public static RaceManager Instance { get; private set; }
     public bool IsRaceFinished => raceFinished;
+
+    void Update()
+    {
+        if (raceFinished || !CountdownUI.RaceStarted) return;
+
+        if (raceTimeLimit > 0f)
+        {
+            raceElapsed += Time.deltaTime;
+            if (raceElapsed >= raceTimeLimit)
+            {
+                TriggerGameOver("Time's Up!");
+            }
+        }
+    }
+
+    public void TriggerGameOver(string reason = "Game Over!")
+    {
+        if (raceFinished) return;
+        raceFinished = true;
+
+        if (playerInput != null)
+            playerInput.DeactivateInput();
+        if (carController != null)
+            carController.enabled = false;
+
+        if (gameOverScreen != null)
+            gameOverScreen.ShowGameOver(reason);
+    }
 
     // called by LapCheckpoint triggers
     public void HitCheckpoint(int checkpointIndex, bool completesLap = false)
