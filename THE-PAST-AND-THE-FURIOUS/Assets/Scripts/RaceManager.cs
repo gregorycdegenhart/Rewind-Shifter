@@ -73,6 +73,7 @@ public class RaceManager : MonoBehaviour
 
     public static RaceManager Instance { get; private set; }
     public bool IsRaceFinished => raceFinished;
+    public int GetVisitedCount() => visitedCheckpoints.Count;
 
     void Update()
     {

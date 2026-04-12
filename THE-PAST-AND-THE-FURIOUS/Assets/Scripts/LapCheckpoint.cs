@@ -18,6 +18,7 @@ public class LapCheckpoint : MonoBehaviour
             if (Time.time - lastTriggerTime < 0.5f) return;
             lastTriggerTime = Time.time;
 
+            Debug.Log($"[CP] index={checkpointIndex} completesLap={completesLap} visited={RaceManager.Instance.GetVisitedCount()}");
             RaceManager.Instance.HitCheckpoint(checkpointIndex, completesLap);
 
             CarAudio carAudio = other.GetComponentInParent<CarAudio>();
