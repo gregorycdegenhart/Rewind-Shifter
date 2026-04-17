@@ -66,6 +66,9 @@ public class ThirdPersonCamera : MonoBehaviour
 
     void Update()
     {
+        // Don't touch cursor while paused — PauseMenu manages it
+        if (Time.timeScale == 0f) return;
+
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             UnlockCursor();
 

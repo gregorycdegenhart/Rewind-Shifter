@@ -30,6 +30,20 @@ public class CarController : MonoBehaviour
     private float cooldownTimer = 0f;
     private float speedMultiplier = 1f;
 
+    [Header("Drift")]
+    public float driftGrip = 0.2f;
+    public float driftTurnMultiplier = 3f;
+    public float driftEntryKick = 9f;
+    public float driftBoostPerSecond = 0.15f;
+    public float driftBoostMax = 1.5f;
+    public float driftBoostForce = 20f;
+
+    private bool isDrifting = false;
+    private bool wasDrifting = false;
+    private float driftAmount = 0f;
+    private float driftBoostCharge = 0f;
+    private Vector3 preSlideVelocity;
+
     [Header("Ground Stick")]
     public LayerMask groundMask;
     public float groundCheckDistance = 0.8f;
@@ -45,20 +59,16 @@ public class CarController : MonoBehaviour
         rb.linearDamping = 0f;
         rb.angularDamping = 2f;
 
-        // preserve your original constraints
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | 
-                         RigidbodyConstraints.FreezeRotationZ | 
+        rb.constraints = RigidbodyConstraints.FreezeRotationX |
+                         RigidbodyConstraints.FreezeRotationZ |
                          RigidbodyConstraints.FreezeRotationY;
 
         rb.centerOfMass = centerOfMassOffset;
-
-        rb.useGravity = true; // make sure this is on
-        rb.AddForce(Physics.gravity * 4f * rb.mass);
+        rb.useGravity = true;
     }
 
     void Update()
     {
-        // handle turbo timers
         if (isTurboActive)
         {
             turboTimer -= Time.deltaTime;
@@ -73,52 +83,125 @@ public class CarController : MonoBehaviour
         {
             cooldownTimer -= Time.deltaTime;
         }
+
+        isDrifting = false;
+        if (Keyboard.current != null && Keyboard.current.leftShiftKey.isPressed)
+            isDrifting = true;
+        if (Gamepad.current != null && Gamepad.current.rightTrigger.ReadValue() > 0.3f)
+            isDrifting = true;
     }
 
     void FixedUpdate()
     {
-        // At the start of FixedUpdate, apply extra gravity
         rb.AddForce(Physics.gravity * 2f * rb.mass, ForceMode.Force);
-        
+
         Vector3 forward = transform.forward;
-        forward.y = 0f; // flatten so we only move along ground
+        forward.y = 0f;
         forward.Normalize();
 
-        // horizontal velocity
         Vector3 flatVel = Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up);
+        float speed = flatVel.magnitude;
 
-        // desired speed along forward
-        float targetSpeed = moveInput.y * maxForwardSpeed * speedMultiplier;
-        if (targetSpeed < 0f) targetSpeed = Mathf.Max(targetSpeed, -maxReverseSpeed * speedMultiplier);
+        // =====================
+        // DRIFT STATE
+        // =====================
+        // Builds up over 0.25s, bleeds out over 0.6s (momentum carry on release)
+        if (isDrifting)
+            driftAmount = Mathf.MoveTowards(driftAmount, 1f, Time.fixedDeltaTime * 4f);
+        else
+            driftAmount = Mathf.MoveTowards(driftAmount, 0f, Time.fixedDeltaTime * 1.7f);
 
-        Vector3 desiredVel = forward * targetSpeed;
+        // Entry kick - bigger swing
+        if (isDrifting && !wasDrifting && speed > 3f)
+        {
+            preSlideVelocity = rb.linearVelocity;
+            float steerDir = Mathf.Abs(moveInput.x) > 0.1f ? Mathf.Sign(moveInput.x) : 1f;
+            // Scale kick with speed - faster = bigger swing
+            float kickScale = Mathf.Clamp01(speed / maxForwardSpeed);
+            rb.AddForce(transform.right * steerDir * driftEntryKick * (0.5f + kickScale), ForceMode.VelocityChange);
+            driftBoostCharge = 0f;
+        }
 
-        // calculate force needed to reach desired velocity
-        Vector3 force = (desiredVel - flatVel) * rb.mass / Time.fixedDeltaTime;
+        // Drift exit - release the boost
+        if (!isDrifting && wasDrifting && driftBoostCharge > 0.2f)
+        {
+            float boostPower = driftBoostCharge * driftBoostForce;
+            rb.AddForce(transform.forward * boostPower, ForceMode.VelocityChange);
+            driftBoostCharge = 0f;
+        }
+        wasDrifting = isDrifting;
 
-        // clamp force for stability
-        force = Vector3.ClampMagnitude(force, acceleration * rb.mass);
+        // Charge boost while drifting - more sideways slide = faster charge
+        if (isDrifting && speed > 3f)
+        {
+            Vector3 lv = transform.InverseTransformDirection(rb.linearVelocity);
+            float slideAmount = Mathf.Abs(lv.x) / Mathf.Max(speed, 1f);
+            driftBoostCharge = Mathf.Min(driftBoostCharge + slideAmount * driftBoostPerSecond * Time.fixedDeltaTime * 60f, driftBoostMax);
+        }
 
-        // apply force, leave gravity alone
-        rb.AddForce(force, ForceMode.Force);
+        // =====================
+        // THE KEY TO GOOD DRIFT:
+        // Car rotates via steering, but velocity stays in the OLD direction.
+        // This creates the angle between where the car faces and where it moves.
+        // =====================
 
-        // turning
+        // --- TURNING ---
+        float turnMult = Mathf.Lerp(1f, driftTurnMultiplier, driftAmount);
         if (Mathf.Abs(moveInput.x) > 0.1f)
         {
-            float turn = moveInput.x * turnSpeed * Time.fixedDeltaTime * Mathf.Sign(Vector3.Dot(rb.linearVelocity, forward));
+            float turn = moveInput.x * turnSpeed * turnMult * Time.fixedDeltaTime;
+            // During normal driving, only turn in direction of travel
+            // During drift, always allow full rotation regardless of velocity
+            if (driftAmount < 0.3f)
+                turn *= Mathf.Sign(Vector3.Dot(rb.linearVelocity, forward));
             rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, turn, 0f));
         }
 
-        // sideways drag
+        // --- FORWARD FORCE ---
+        // During drift: push force along car's forward but velocity carries in slide direction
+        float targetSpeed = moveInput.y * maxForwardSpeed * speedMultiplier;
+        if (targetSpeed < 0f) targetSpeed = Mathf.Max(targetSpeed, -maxReverseSpeed * speedMultiplier);
+
+        bool airborneCoasting = !IsGrounded(out RaycastHit hit) && Mathf.Abs(moveInput.y) < 0.01f;
+
+        if (!airborneCoasting)
+        {
+            if (driftAmount > 0.3f && moveInput.y > 0.1f)
+            {
+                // During drift: add force along car's forward to maintain speed
+                // but DON'T correct sideways velocity - that's the slide
+                float forwardComponent = Vector3.Dot(rb.linearVelocity, forward);
+                float desiredForward = maxForwardSpeed * speedMultiplier * 0.9f;
+                if (forwardComponent < desiredForward)
+                {
+                    rb.AddForce(forward * acceleration * rb.mass * 0.7f, ForceMode.Force);
+                }
+            }
+            else
+            {
+                // Normal driving
+                Vector3 desiredVel = forward * targetSpeed;
+                Vector3 force = (desiredVel - flatVel) * rb.mass / Time.fixedDeltaTime;
+                force = Vector3.ClampMagnitude(force, acceleration * rb.mass);
+                rb.AddForce(force, ForceMode.Force);
+            }
+        }
+
+        // --- SIDEWAYS DRAG ---
+        // This is where the magic happens:
+        // Normal: high drag (0.8) = car goes where it faces
+        // Drift: low drag (0.35) = car slides, momentum carries sideways
+        // Release: drag slowly returns, so the slide carries and gradually settles
+        float grip = Mathf.Lerp(sidewaysDrag, driftGrip, driftAmount);
         Vector3 localVel = transform.InverseTransformDirection(rb.linearVelocity);
-        localVel.x *= sidewaysDrag;
+        localVel.x *= grip;
         rb.linearVelocity = transform.TransformDirection(localVel);
 
-        if (IsGrounded(out RaycastHit hit))
+        // --- GROUND STICK ---
+        if (IsGrounded(out _))
         {
             rb.AddForce(Vector3.down * groundStickForce, ForceMode.Acceleration);
 
-            // Also clamp upward velocity so bumps don't launch the car
             if (rb.linearVelocity.y > maxUpVelocityWhenGrounded)
             {
                 Vector3 v = rb.linearVelocity;
@@ -134,6 +217,11 @@ public class CarController : MonoBehaviour
         moveInput = value.Get<Vector2>();
     }
 
+    public void OnDrift(InputValue value) { }
+
+    public bool IsDrifting() => isDrifting || driftAmount > 0.1f;
+    public float GetDriftBoostCharge() => driftBoostCharge / driftBoostMax;
+
     public void OnTurbo(InputValue value)
     {
         if (value.isPressed && !isTurboActive && cooldownTimer <= 0f)
@@ -144,7 +232,6 @@ public class CarController : MonoBehaviour
         }
     }
 
-    // --- Turbo / external control ---
     public void SetSpeedMultiplier(float multiplier)
     {
         speedMultiplier = multiplier;
