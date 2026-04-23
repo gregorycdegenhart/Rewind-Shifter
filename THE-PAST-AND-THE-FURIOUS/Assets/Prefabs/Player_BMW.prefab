@@ -278,9 +278,25 @@ MonoBehaviour:
   maxReverseSpeed: 10
   turnSpeed: 80
   deceleration: 10
+  moveInput: {x: 0, y: 0}
   turboSpeedMultiplier: 2
   turboDuration: 2
   turboCooldown: 5
+  sidewaysDrag: 0.8
+  centerOfMassOffset: {x: 0, y: -0.5, z: 0}
+  rb: {fileID: 0}
+  driftGrip: 0.2
+  driftTurnMultiplier: 3
+  driftEntryKick: 9
+  driftBoostPerSecond: 0.15
+  driftBoostMax: 1.5
+  driftBoostForce: 20
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 0
+  groundCheckDistance: 0.8
+  groundStickForce: 40
+  maxUpVelocityWhenGrounded: -2
 --- !u!136 &6156303139612931602
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -415,6 +431,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -7457307654971305524, guid: c2b1c8f74fa6530419d38d39bb23ed90, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 1b82409c0065103489d53810238c4af8, type: 2}
     - target: {fileID: 919132149155446097, guid: c2b1c8f74fa6530419d38d39bb23ed90, type: 3}
       propertyPath: m_Name
       value: BMW_m3_2.0
