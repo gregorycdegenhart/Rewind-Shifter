@@ -13928,7 +13928,7 @@ MonoBehaviour:
   carRigidbody: {fileID: 905787399}
   maxMPH: 250
   minAngle: -83
-  maxAngle: -270
+  maxAngle: -250
 --- !u!114 &1957348283
 MonoBehaviour:
   m_ObjectHideFlags: 0
